@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: cinepulse-nlp-sentiment-dashboard
+    runtime: python
+    plan: free
+    buildCommand: pip install --no-cache-dir -r requirements.txt && python -m src.build_assets
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 120
+    healthCheckPath: /healthz
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.8
+      - key: FLASK_ENV
+        value: production
+      - key: SECRET_KEY
+        generateValue: true
+      - key: TRANSFORMER_PRELOAD
+        value: "true"
+      - key: MAX_REVIEW_CHARS
+        value: "10000"
+      - key: MAX_BATCH_ROWS
+        value: "500"
+      - key: MAX_UPLOAD_BYTES
+        value: "2097152"

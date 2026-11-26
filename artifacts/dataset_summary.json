@@ -1,0 +1,75 @@
+{
+  "dataset_name": "Stanford IMDb (Maas et al., ACL 2011)",
+  "source_url": "https://ai.stanford.edu/~amaas/data/sentiment/",
+  "initial_records": 6000,
+  "cleaned_records": 5988,
+  "missing_or_short_removed": 0,
+  "duplicates_removed": 12,
+  "positive_count": 2993,
+  "negative_count": 2995,
+  "splits": {
+    "train": 4191,
+    "validation": 898,
+    "test": 899
+  },
+  "word_count_stats": {
+    "mean": 232.6,
+    "median": 173.0,
+    "min": 8,
+    "max": 2470
+  },
+  "rating_distribution": {
+    "1": 1125,
+    "2": 557,
+    "3": 619,
+    "4": 694,
+    "7": 537,
+    "8": 659,
+    "9": 599,
+    "10": 1198
+  },
+  "sample_records": [
+    {
+      "review_id": "train_neg_571_1",
+      "sentiment": "negative",
+      "star_rating_raw": 1,
+      "word_count": 108,
+      "excerpt": "I only rented this because i loved the first movie. However, calling it John Carpenters Vampires: Los Muertos is just a con trick to get you to rent it. He is in fact executive producer and clearly had nothing to do with..."
+    },
+    {
+      "review_id": "train_pos_1384_7",
+      "sentiment": "positive",
+      "star_rating_raw": 7,
+      "word_count": 187,
+      "excerpt": "Also known as \"Water Lilies\" this film tells the story of two girls as they struggle their way into the world of love and sex. This story is told at a slow pace and that works very well. It gives plenty of time and space..."
+    },
+    {
+      "review_id": "train_neg_1261_2",
+      "sentiment": "negative",
+      "star_rating_raw": 2,
+      "word_count": 104,
+      "excerpt": "I'm a Jean Harlow fan, because she had star quality. I don't think her movies are good and I don't even think that she was a good actress, but she certainly was Great in comedies. Every bit of comedy in The Girl from Mis..."
+    },
+    {
+      "review_id": "test_pos_16_8",
+      "sentiment": "positive",
+      "star_rating_raw": 8,
+      "word_count": 206,
+      "excerpt": "I went to an advance screening of this movie thinking I was about to embark on 120 minutes of cheezy lines, mindless plot, and the kind of nauseous acting that made \"The Postman\" one of the most malignant displays of cin..."
+    },
+    {
+      "review_id": "train_neg_672_1",
+      "sentiment": "negative",
+      "star_rating_raw": 1,
+      "word_count": 452,
+      "excerpt": "Prom Night is shot with the artistic eye someone gives while finely crafting a Lifetime original film. You know the one. This October, Lifetime takes a break from the courageous tale of a woman surviving (insert disease ..."
+    },
+    {
+      "review_id": "test_neg_1132_1",
+      "sentiment": "negative",
+      "star_rating_raw": 1,
+      "word_count": 216,
+      "excerpt": "Who gave these people money to make a movie? There was nothing funny about it. The fact that the farting dog was the funniest thing about this piece of sickness says it all. First of all, it has nothing to do with Christ..."
+    }
+  ]
+}

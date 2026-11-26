@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="csrf-token" content="{{ csrf_token }}" />
+  <title>CinePulse NLP — Movie Review Sentiment Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
+    rel="stylesheet"
+  />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+</head>
+<body>
+  <!-- Animated Cinema Bokeh & Projector Light Backdrop -->
+  <canvas id="cinema-bg-canvas" aria-hidden="true"></canvas>
+  <div class="film-grain-overlay" aria-hidden="true"></div>
+  <div class="ambient-vignette" aria-hidden="true"></div>
+
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand-group">
+        <div class="brand-emblem" aria-hidden="true">
+          <span>CP</span>
+        </div>
+        <div>
+          <p class="eyebrow">ETMMTI303 Capstone · Option 12</p>
+          <h1 class="brand-title">CinePulse <span>NLP</span></h1>
+        </div>
+      </div>
+
+      <div class="status-cluster">
+        <span class="pill pill-gold" id="badge-models">Loading Models...</span>
+        <span class="pill pill-emerald" id="badge-security" title="CSP, CSRF, Rate Limiting, Input & CSV Sanitization Active">
+          Security Hardened
+        </span>
+      </div>
+    </header>
+
+    <nav class="tab-bar" role="tablist" aria-label="Dashboard Sections">
+      <button class="tab-btn active" role="tab" aria-selected="true" data-tab="analyzer">Live Review Analyzer</button>
+      <button class="tab-btn" role="tab" aria-selected="false" data-tab="batch">Batch Upload Studio</button>
+      <button class="tab-btn" role="tab" aria-selected="false" data-tab="benchmark">Model Benchmarks</button>
+      <button class="tab-btn" role="tab" aria-selected="false" data-tab="errors">Error Analysis</button>
+      <button class="tab-btn" role="tab" aria-selected="false" data-tab="architecture">Architecture &amp; Security</button>
+    </nav>
+
+    <main class="main-content">
+      <!-- TAB 1: LIVE REVIEW ANALYZER -->
+      <section id="tab-analyzer" class="tab-panel active">
+        <div class="grid-two-asymmetric">
+          <article class="glass-card composer-card">
+            <div class="card-header">
+              <div>
+                <h2>Inspect Unseen Movie Review</h2>
+                <p class="muted">Compare Classical ML baselines and Quantized DistilBERT in real time.</p>
+              </div>
+              <div class="select-wrap">
+                <label for="single-model-select">Primary Scorer</label>
+                <select id="single-model-select">
+                  <option value="ensemble" selected>CinePulse Ensemble (DistilBERT + LogReg + SVM)</option>
+                  <option value="distilbert_onnx">DistilBERT (SST-2 ONNX Transformer)</option>
+                  <option value="tfidf_logreg">TF-IDF + Logistic Regression</option>
+                  <option value="tfidf_svm">TF-IDF + Linear SVM</option>
+                  <option value="tfidf_nb">TF-IDF + Multinomial Naive Bayes</option>
+                  <option value="bow_nb">BoW + Multinomial Naive Bayes</option>
+                  <option value="svd_logreg">Dense SVD Embeddings + LogReg</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="sample-pills">
+              <span class="sample-label">Try sample review:</span>
+              <button type="button" class="chip-btn" data-sample="positive">Rave Praise</button>
+              <button type="button" class="chip-btn" data-sample="negative">Scathing Critique</button>
+              <button type="button" class="chip-btn" data-sample="negation">Negation &amp; Contrast</button>
+              <button type="button" class="chip-btn" data-sample="mixed">Mixed / Nuanced</button>
+            </div>
+
+            <form id="single-review-form">
+              <textarea
+                id="review-input"
+                rows="7"
+                maxlength="10000"
+                placeholder="Paste or write a movie review (e.g., acting, pacing, screenplay, cinematography, soundtrack)..."
+                required
+              ></textarea>
+              <div class="form-footer">
+                <span class="char-counter" id="char-counter">0 / 10,000 chars</span>
+                <div class="btn-row">
+                  <button type="button" class="btn-ghost" id="clear-review-btn">Clear</button>
+                  <button type="submit" class="btn-primary" id="analyze-btn">
+                    <span class="btn-label">Analyze Sentiment</span>
+                  </button>
+                </div>
+              </div>
+            </form>
+            <div id="single-error-banner" class="alert-banner hidden" role="alert"></div>
+          </article>
+
+          <article class="glass-card verdict-card" id="verdict-card">
+            <div class="verdict-placeholder" id="verdict-placeholder">
+              <div class="reel-icon" aria-hidden="true">&#9673;</div>
+              <h3>Awaiting Screening Input</h3>
+              <p class="muted">
+                Submit a movie review on the left to inspect sentiment polarity, confidence calibration,
+                token-level feature attribution, movie aspect breakdown, and preprocessing trace.
+              </p>
+            </div>
+
+            <div id="verdict-results" class="hidden">
+              <div class="verdict-hero">
+                <div>
+                  <span class="verdict-kicker" id="res-model-label">CinePulse Ensemble</span>
+                  <div class="verdict-headline">
+                    <span class="verdict-badge" id="res-verdict-badge">Positive</span>
+                    <span class="intensity-tag" id="res-intensity-tag">Strong</span>
+                  </div>
+                </div>
+                <div class="rating-orb">
+                  <span class="rating-value" id="res-star-rating">8.9</span>
+                  <span class="rating-denom">/ 10 est.</span>
+                </div>
+              </div>
+
+              <div class="kpi-strip">
+                <div class="mini-kpi">
+                  <span>Positivity Score</span>
+                  <strong id="res-prob-pos">92.4%</strong>
+                </div>
+                <div class="mini-kpi">
+                  <span>Negativity Score</span>
+                  <strong id="res-prob-neg">7.6%</strong>
+                </div>
+                <div class="mini-kpi">
+                  <span>Confidence</span>
+                  <strong id="res-confidence">92.4%</strong>
+                </div>
+                <div class="mini-kpi">
+                  <span>Words</span>
+                  <strong id="res-word-count">84</strong>
+                </div>
+              </div>
+
+              <div class="polarity-meter">
+                <div class="polarity-track">
+                  <div class="polarity-fill" id="res-polarity-bar"></div>
+                </div>
+                <div class="polarity-labels">
+                  <span>Negative (0%)</span>
+                  <span>Neutral (50%)</span>
+                  <span>Positive (100%)</span>
+                </div>
+              </div>
+
+              <div class="subpanel">
+                <h4>All 6 Models — Live Agreement &amp; Latency</h4>
+                <div class="model-bars" id="res-model-bars"></div>
+              </div>
+            </div>
+          </article>
+        </div>
+
+        <div id="single-deep-dive" class="grid-three hidden">
+          <article class="glass-card">
+            <h3>Token-Level Feature Attribution</h3>
+            <p class="muted">Highest-impact n-grams driving TF-IDF + Logistic Regression decision.</p>
+            <div id="res-token-attributions" class="token-list"></div>
+          </article>
+
+          <article class="glass-card">
+            <h3>Movie Aspect Breakdown</h3>
+            <p class="muted">Detected cinematic dimensions and local clause polarity.</p>
+            <div id="res-aspects" class="aspect-list"></div>
+          </article>
+
+          <article class="glass-card">
+            <h3>Layer 3 Preprocessing Audit</h3>
+            <p class="muted">Negation-preserving normalization &amp; WordNet lemmatization trace.</p>
+            <div id="res-preprocessing" class="trace-box"></div>
+          </article>
+        </div>
+      </section>
+
+      <!-- TAB 2: BATCH UPLOAD STUDIO -->
+      <section id="tab-batch" class="tab-panel">
+        <div class="grid-two-asymmetric">
+          <article class="glass-card">
+            <h2>Batch Audience Review Analyzer</h2>
+            <p class="muted">
+              Upload a <code>.csv</code> (with a <code>review</code>/<code>text</code> column) or line-delimited
+              <code>.txt</code> file. Protected by strict 2 MB &amp; 500-row upload limits and OWASP CSV sanitization.
+            </p>
+
+            <form id="batch-upload-form" class="upload-form">
+              <div class="select-wrap">
+                <label for="batch-model-select">Batch Scoring Model</label>
+                <select id="batch-model-select">
+                  <option value="distilbert_onnx">DistilBERT (SST-2 ONNX Transformer)</option>
+                  <option value="tfidf_logreg" selected>TF-IDF + Logistic Regression</option>
+                  <option value="tfidf_svm">TF-IDF + Linear SVM</option>
+                  <option value="tfidf_nb">TF-IDF + Multinomial Naive Bayes</option>
+                  <option value="bow_nb">BoW + Multinomial Naive Bayes</option>
+                </select>
+              </div>
+
+              <label class="dropzone" for="batch-file-input" id="batch-dropzone">
+                <input type="file" id="batch-file-input" accept=".csv,.txt" hidden />
+                <span class="dropzone-title">Drop .CSV or .TXT file here, or click to browse</span>
+                <span class="dropzone-sub" id="batch-file-name">Max 2 MB · Up to 500 reviews per batch</span>
+              </label>
+
+              <div class="btn-row">
+                <button type="button" class="btn-ghost" id="download-sample-batch-btn">Try Built-in Sample Batch</button>
+                <button type="submit" class="btn-primary" id="batch-submit-btn">Run Batch Screening</button>
+              </div>
+            </form>
+            <div id="batch-error-banner" class="alert-banner hidden" role="alert"></div>
+          </article>
+
+          <article class="glass-card">
+            <div class="card-header">
+              <div>
+                <h3>Batch Opinion Distribution</h3>
+                <p class="muted" id="batch-summary-subtitle">Upload a dataset to visualize audience polarity.</p>
+              </div>
+              <button type="button" class="btn-ghost hidden" id="export-batch-btn">Export Sanitized CSV</button>
+            </div>
+
+            <div class="kpi-strip" id="batch-kpis">
+              <div class="mini-kpi"><span>Reviews</span><strong id="b-total">—</strong></div>
+              <div class="mini-kpi"><span>Positive Share</span><strong id="b-pos-pct">—</strong></div>
+              <div class="mini-kpi"><span>Avg Est. Rating</span><strong id="b-avg-rating">—</strong></div>
+              <div class="mini-kpi"><span>Avg Confidence</span><strong id="b-avg-conf">—</strong></div>
+            </div>
+
+            <div class="chart-wrap compact">
+              <canvas id="batch-rating-chart"></canvas>
+            </div>
+          </article>
+        </div>
+
+        <article class="glass-card hidden" id="batch-results-card">
+          <h3>Scored Batch Reviews</h3>
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Sentiment</th>
+                  <th>Pos. Prob</th>
+                  <th>Est. Rating</th>
+                  <th>Aspects</th>
+                  <th>Review Excerpt</th>
+                </tr>
+              </thead>
+              <tbody id="batch-table-body"></tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+
+      <!-- TAB 3: MODEL BENCHMARKS & VISUALIZATIONS -->
+      <section id="tab-benchmark" class="tab-panel">
+        <div class="kpi-grid-4" id="benchmark-kpis">
+          <div class="glass-card stat-tile">
+            <span class="stat-label">Dataset Corpus</span>
+            <strong class="stat-value" id="stat-corpus-size">—</strong>
+            <span class="stat-foot" id="stat-corpus-source">Stanford IMDb</span>
+          </div>
+          <div class="glass-card stat-tile">
+            <span class="stat-label">Held-Out Test Split</span>
+            <strong class="stat-value" id="stat-test-size">—</strong>
+            <span class="stat-foot">Stratified 70 / 15 / 15</span>
+          </div>
+          <div class="glass-card stat-tile">
+            <span class="stat-label">Top Performing Model</span>
+            <strong class="stat-value gold" id="stat-best-model">—</strong>
+            <span class="stat-foot" id="stat-best-f1">F1-Score</span>
+          </div>
+          <div class="glass-card stat-tile">
+            <span class="stat-label">Avg. Review Length</span>
+            <strong class="stat-value" id="stat-avg-words">—</strong>
+            <span class="stat-foot">Tokens per review</span>
+          </div>
+        </div>
+
+        <article class="glass-card">
+          <div class="card-header">
+            <div>
+              <h2>Comparative Evaluation — Classical Baselines vs. DistilBERT Transformer</h2>
+              <p class="muted">Evaluated on identical unseen test reviews (all claims backed by empirical metrics).</p>
+            </div>
+          </div>
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Model</th>
+                  <th>Family</th>
+                  <th>Text Representation</th>
+                  <th>Accuracy</th>
+                  <th>Precision</th>
+                  <th>Recall</th>
+                  <th>F1-Score</th>
+                  <th>ROC-AUC</th>
+                  <th>Latency (ms/rev)</th>
+                </tr>
+              </thead>
+              <tbody id="benchmark-table-body"></tbody>
+            </table>
+          </div>
+        </article>
+
+        <div class="grid-two">
+          <article class="glass-card">
+            <h3>Accuracy &amp; F1-Score Comparison</h3>
+            <div class="chart-wrap">
+              <canvas id="model-comparison-chart"></canvas>
+            </div>
+          </article>
+          <article class="glass-card">
+            <h3>ROC Curves Across Representations</h3>
+            <div class="chart-wrap">
+              <canvas id="roc-curve-chart"></canvas>
+            </div>
+          </article>
+        </div>
+
+        <div class="grid-two">
+          <article class="glass-card">
+            <div class="card-header">
+              <div>
+                <h3>Confusion Matrix &amp; Score Calibration</h3>
+                <p class="muted">Inspect true vs. predicted counts for any evaluated model.</p>
+              </div>
+              <select id="cm-model-select"></select>
+            </div>
+            <div id="cm-grid-container" class="cm-grid"></div>
+            <div class="chart-wrap compact">
+              <canvas id="score-dist-chart"></canvas>
+            </div>
+          </article>
+
+          <article class="glass-card">
+            <h3>2D LSA Embedding Cluster Projection (PCA)</h3>
+            <p class="muted">128-dim SVD dense review embeddings projected onto 2 principal components.</p>
+            <div class="chart-wrap tall">
+              <canvas id="embedding-scatter-chart"></canvas>
+            </div>
+          </article>
+        </div>
+
+        <div class="grid-two">
+          <article class="glass-card">
+            <h3>Top Predictive N-Grams (TF-IDF + LogReg)</h3>
+            <p class="muted">Strongest positive vs. negative lexical coefficients learned from training reviews.</p>
+            <div class="ngram-columns" id="top-ngrams-container"></div>
+          </article>
+          <article class="glass-card">
+            <h3>Audience Aspect Frequency &amp; Polarity</h3>
+            <p class="muted">Cinematic aspect coverage and positive sentiment rate across the test split.</p>
+            <div class="chart-wrap">
+              <canvas id="aspect-corpus-chart"></canvas>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <!-- TAB 4: ERROR ANALYSIS -->
+      <section id="tab-errors" class="tab-panel">
+        <div class="grid-two-asymmetric">
+          <article class="glass-card">
+            <h2>Misclassification Taxonomy</h2>
+            <p class="muted">
+              Automated diagnostic breakdown of test-set errors explaining linguistic causes
+              (negation scope, mixed concessions, sarcasm, plot-recap dilution).
+            </p>
+            <div class="chart-wrap">
+              <canvas id="error-cause-chart"></canvas>
+            </div>
+          </article>
+          <article class="glass-card">
+            <h3>Empirical Error Insights</h3>
+            <div id="error-summary-stats" class="error-summary-box"></div>
+          </article>
+        </div>
+
+        <article class="glass-card">
+          <div class="card-header">
+            <h3>Qualitative Case Inspector</h3>
+            <div class="btn-row" id="error-filter-btns">
+              <button type="button" class="chip-btn active" data-errtab="false_positives">False Positives</button>
+              <button type="button" class="chip-btn" data-errtab="false_negatives">False Negatives</button>
+              <button type="button" class="chip-btn" data-errtab="transformer_over_classical_wins">Transformer Wins vs. Classical</button>
+              <button type="button" class="chip-btn" data-errtab="correct_examples">High-Confidence Correct</button>
+            </div>
+          </div>
+          <div id="error-cases-grid" class="error-cases-grid"></div>
+        </article>
+      </section>
+
+      <!-- TAB 5: ARCHITECTURE & SECURITY -->
+      <section id="tab-architecture" class="tab-panel">
+        <article class="glass-card">
+          <h2>11-Layer End-to-End Capstone Architecture (ETMMTI303 Blueprint)</h2>
+          <p class="muted">Aligned strictly with the approved K.R. Mangalam University Capstone specification.</p>
+          <div class="pipeline-flow">
+            <div class="pipe-node"><span>01</span><strong>Problem &amp; Input</strong><small>Movie review polarity, star score &amp; aspect insight</small></div>
+            <div class="pipe-node"><span>02</span><strong>Data Layer</strong><small>Stanford IMDb 6,000 balanced reviews · deduped · 70/15/15 split</small></div>
+            <div class="pipe-node"><span>03</span><strong>Preprocessing</strong><small>HTML strip · contraction expand · negation-safe stops · WordNet lemma</small></div>
+            <div class="pipe-node"><span>04</span><strong>Representation</strong><small>BoW (1-2g) · Sublinear TF-IDF · 128-d SVD Dense Embeddings</small></div>
+            <div class="pipe-node"><span>05</span><strong>Classical Baseline</strong><small>Multinomial NB · Logistic Regression · Calibrated Linear SVM</small></div>
+            <div class="pipe-node"><span>06</span><strong>Transformer Layer</strong><small>Quantized DistilBERT SST-2 (ONNX) + Aspect Polarity Engine</small></div>
+            <div class="pipe-node"><span>07</span><strong>Evaluation</strong><small>Acc, Prec, Rec, F1, ROC-AUC, Confusion Matrix, Latency</small></div>
+            <div class="pipe-node"><span>08</span><strong>Error Analysis</strong><small>FP/FN taxonomy, negation &amp; sarcasm cases, model disagreements</small></div>
+            <div class="pipe-node"><span>09</span><strong>Application Layer</strong><small>Hardened Flask REST API + Interactive Screening Room UI</small></div>
+            <div class="pipe-node"><span>10</span><strong>Visualization</strong><small>ROC curves, 2D PCA embeddings, aspect bars, n-gram weights</small></div>
+            <div class="pipe-node"><span>11</span><strong>Final Delivery</strong><small>Public GitHub repo, pytest suite, report, slides &amp; Render Blueprint</small></div>
+          </div>
+        </article>
+
+        <div class="grid-two">
+          <article class="glass-card">
+            <h3>Implemented Security Protocols</h3>
+            <ul class="security-list">
+              <li><strong>Strict Content Security Policy (CSP):</strong> Self-hosted scripts &amp; Chart.js bundle (<code>script-src 'self'</code>), blocked framing (<code>frame-ancestors 'none'</code>), and object blocking.</li>
+              <li><strong>CSRF &amp; Same-Origin Guard:</strong> Session-bound cryptographic tokens verified via constant-time <code>hmac.compare_digest</code> on every POST endpoint.</li>
+              <li><strong>Rate Limiting &amp; Payload Caps:</strong> Sliding-window limits via Flask-Limiter (60/min predict, 12/min batch), 10,000-char input cap, 2 MB / 500-row upload cap.</li>
+              <li><strong>XSS &amp; CSV Formula Injection Defense:</strong> Null-byte &amp; control-char rejection, safe DOM <code>textContent</code> rendering, and OWASP cell-prefix neutralization on CSV export.</li>
+              <li><strong>Transport &amp; Cookie Hardening:</strong> <code>HSTS</code>, <code>X-Content-Type-Options: nosniff</code>, <code>X-Frame-Options: DENY</code>, <code>HttpOnly</code> &amp; <code>SameSite=Lax</code> cookies.</li>
+            </ul>
+          </article>
+
+          <article class="glass-card">
+            <h3>Dataset Profile &amp; Sample Records</h3>
+            <div id="dataset-samples-list" class="sample-records-list"></div>
+          </article>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="{{ url_for('static', filename='js/vendor/chart.umd.min.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/background.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+</body>
+</html>
