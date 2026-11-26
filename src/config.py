@@ -16,6 +16,7 @@ PROCESSED_DATA_DIR = DATA_DIR / "processed"
 ARTIFACTS_DIR = BASE_DIR / "artifacts"
 PLOTS_DIR = ARTIFACTS_DIR / "plots"
 HF_CACHE_DIR = ARTIFACTS_DIR / "hf_cache"
+ONNX_MODEL_DIR = ARTIFACTS_DIR / "onnx_distilbert"
 
 RAW_DATASET_PATH = RAW_DATA_DIR / "movie_reviews_imdb.csv"
 TRAIN_SPLIT_PATH = PROCESSED_DATA_DIR / "train.csv"
@@ -23,6 +24,7 @@ VAL_SPLIT_PATH = PROCESSED_DATA_DIR / "val.csv"
 TEST_SPLIT_PATH = PROCESSED_DATA_DIR / "test.csv"
 
 CLASSICAL_BUNDLE_PATH = ARTIFACTS_DIR / "classical_models.joblib"
+WORDNET_LEXICON_PATH = ARTIFACTS_DIR / "wordnet_noun_lexicon.joblib"
 EMBEDDING_PROJECTION_PATH = ARTIFACTS_DIR / "embedding_projection.json"
 EVALUATION_REPORT_PATH = ARTIFACTS_DIR / "evaluation_report.json"
 ERROR_ANALYSIS_PATH = ARTIFACTS_DIR / "error_analysis.json"
@@ -68,5 +70,6 @@ def ensure_directories() -> None:
         ARTIFACTS_DIR,
         PLOTS_DIR,
         HF_CACHE_DIR,
+        ONNX_MODEL_DIR,
     ):
         directory.mkdir(parents=True, exist_ok=True)

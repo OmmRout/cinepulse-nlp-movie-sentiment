@@ -105,7 +105,14 @@ def index():
     return render_template("index.html", csrf_token=csrf_token)
 
 
+@app.route("/favicon.ico", methods=["GET"])
+@limiter.exempt
+def favicon():
+    return Response(status=204)
+
+
 @app.route("/healthz", methods=["GET"])
+@app.route("/api/status", methods=["GET"])
 @limiter.exempt
 def healthz():
     return (

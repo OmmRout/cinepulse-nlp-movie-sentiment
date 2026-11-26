@@ -4,13 +4,15 @@ from __future__ import annotations
 
 import logging
 import re
+import shutil
+import threading
 import time
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 
-from src.config import HF_CACHE_DIR, TRANSFORMER_MAX_LENGTH, TRANSFORMER_REPO_ID
+from src.config import HF_CACHE_DIR, ONNX_MODEL_DIR, TRANSFORMER_MAX_LENGTH, TRANSFORMER_REPO_ID
 
 logger = logging.getLogger("cinepulse.transformer")
 
@@ -74,14 +76,17 @@ class DistilBertSentimentEngine:
         repo_id: str = TRANSFORMER_REPO_ID,
         cache_dir: Path = HF_CACHE_DIR,
         max_length: int = TRANSFORMER_MAX_LENGTH,
+        low_memory: bool = True,
     ) -> None:
         self.repo_id = repo_id
         self.cache_dir = Path(cache_dir)
         self.max_length = max_length
+        self.low_memory = low_memory
         self._session: Any = None
         self._tokenizer: Any = None
         self._input_names: list[str] = []
         self._load_error: str | None = None
+        self._lock = threading.Lock()
 
     @property
     def is_loaded(self) -> bool:
@@ -92,30 +97,46 @@ class DistilBertSentimentEngine:
         return self._load_error
 
     def load(self) -> bool:
-        """Download (if needed) and initialize the quantized DistilBERT ONNX session."""
+        """Load local ONNX DistilBERT weights (or fetch into local dir if missing)."""
         if self.is_loaded:
             return True
 
         try:
             import onnxruntime as ort
-            from huggingface_hub import hf_hub_download
             from tokenizers import Tokenizer
 
-            self.cache_dir.mkdir(parents=True, exist_ok=True)
-            model_path = hf_hub_download(
-                repo_id=self.repo_id,
-                filename="onnx/model_quantized.onnx",
-                cache_dir=str(self.cache_dir),
-            )
-            tokenizer_path = hf_hub_download(
-                repo_id=self.repo_id,
-                filename="tokenizer.json",
-                cache_dir=str(self.cache_dir),
-            )
+            ONNX_MODEL_DIR.mkdir(parents=True, exist_ok=True)
+            local_model = ONNX_MODEL_DIR / "model_quantized.onnx"
+            local_tokenizer = ONNX_MODEL_DIR / "tokenizer.json"
 
+            if not (local_model.exists() and local_tokenizer.exists()):
+                from huggingface_hub import hf_hub_download
+
+                self.cache_dir.mkdir(parents=True, exist_ok=True)
+                dl_model = hf_hub_download(
+                    repo_id=self.repo_id,
+                    filename="onnx/model_quantized.onnx",
+                    cache_dir=str(self.cache_dir),
+                )
+                dl_tokenizer = hf_hub_download(
+                    repo_id=self.repo_id,
+                    filename="tokenizer.json",
+                    cache_dir=str(self.cache_dir),
+                )
+                shutil.copy2(dl_model, local_model)
+                shutil.copy2(dl_tokenizer, local_tokenizer)
+                # Remove HF cache blobs to save disk/memory in container builds
+                shutil.rmtree(self.cache_dir, ignore_errors=True)
+
+            model_path = str(local_model)
+            tokenizer_path = str(local_tokenizer)
+
+            ort.set_default_logger_severity(3)
             sess_opts = ort.SessionOptions()
-            sess_opts.intra_op_num_threads = 2
+            sess_opts.intra_op_num_threads = 1 if self.low_memory else 4
             sess_opts.inter_op_num_threads = 1
+            sess_opts.enable_cpu_mem_arena = not self.low_memory
+            sess_opts.enable_mem_pattern = not self.low_memory
             sess_opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
 
             self._session = ort.InferenceSession(
@@ -127,7 +148,8 @@ class DistilBertSentimentEngine:
 
             tokenizer = Tokenizer.from_file(tokenizer_path)
             tokenizer.enable_truncation(max_length=self.max_length)
-            tokenizer.enable_padding(length=self.max_length)
+            # Dynamic padding avoids allocating [batch, 256] tensors for short reviews
+            tokenizer.enable_padding()
             self._tokenizer = tokenizer
             self._load_error = None
             logger.info("Loaded DistilBERT ONNX model from %s", self.repo_id)
@@ -153,16 +175,17 @@ class DistilBertSentimentEngine:
 
         t0 = time.perf_counter()
         chunks = self._prepare_chunks(text)
-        encodings = self._tokenizer.encode_batch(chunks)
+        with self._lock:
+            encodings = self._tokenizer.encode_batch(chunks)
 
-        input_ids = np.array([enc.ids for enc in encodings], dtype=np.int64)
-        attention_mask = np.array([enc.attention_mask for enc in encodings], dtype=np.int64)
+            input_ids = np.array([enc.ids for enc in encodings], dtype=np.int64)
+            attention_mask = np.array([enc.attention_mask for enc in encodings], dtype=np.int64)
 
-        ort_inputs: dict[str, np.ndarray] = {"input_ids": input_ids}
-        if "attention_mask" in self._input_names:
-            ort_inputs["attention_mask"] = attention_mask
+            ort_inputs: dict[str, np.ndarray] = {"input_ids": input_ids}
+            if "attention_mask" in self._input_names:
+                ort_inputs["attention_mask"] = attention_mask
 
-        logits = self._session.run(None, ort_inputs)[0]
+            logits = self._session.run(None, ort_inputs)[0]
         probs = _softmax(logits)  # [chunk_count, 2] -> index 0: NEG, index 1: POS
         pos_prob = float(np.mean(probs[:, 1]))
         latency_ms = (time.perf_counter() - t0) * 1000.0
@@ -176,19 +199,20 @@ class DistilBertSentimentEngine:
         t0 = time.perf_counter()
         # Use single-pass 256-token representation for fast batch benchmarking
         all_pos_probs: list[float] = []
-        for start in range(0, len(texts), batch_size):
-            slice_texts = texts[start : start + batch_size]
-            encodings = self._tokenizer.encode_batch(slice_texts)
-            input_ids = np.array([enc.ids for enc in encodings], dtype=np.int64)
-            attention_mask = np.array([enc.attention_mask for enc in encodings], dtype=np.int64)
+        with self._lock:
+            for start in range(0, len(texts), batch_size):
+                slice_texts = texts[start : start + batch_size]
+                encodings = self._tokenizer.encode_batch(slice_texts)
+                input_ids = np.array([enc.ids for enc in encodings], dtype=np.int64)
+                attention_mask = np.array([enc.attention_mask for enc in encodings], dtype=np.int64)
 
-            ort_inputs: dict[str, np.ndarray] = {"input_ids": input_ids}
-            if "attention_mask" in self._input_names:
-                ort_inputs["attention_mask"] = attention_mask
+                ort_inputs: dict[str, np.ndarray] = {"input_ids": input_ids}
+                if "attention_mask" in self._input_names:
+                    ort_inputs["attention_mask"] = attention_mask
 
-            logits = self._session.run(None, ort_inputs)[0]
-            probs = _softmax(logits)
-            all_pos_probs.extend(probs[:, 1].tolist())
+                logits = self._session.run(None, ort_inputs)[0]
+                probs = _softmax(logits)
+                all_pos_probs.extend(probs[:, 1].tolist())
 
         total_ms = (time.perf_counter() - t0) * 1000.0
         return np.array(all_pos_probs, dtype=np.float64), total_ms

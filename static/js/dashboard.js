@@ -104,9 +104,10 @@
           model: document.getElementById("single-model-select").value,
         }),
       });
-      const data = await resp.json();
-      if (!resp.ok) {
-        throw new Error(data.error || "Prediction failed.");
+      const isJson = (resp.headers.get("content-type") || "").includes("application/json");
+      const data = isJson ? await resp.json() : null;
+      if (!resp.ok || !data) {
+        throw new Error((data && data.error) || `Server returned HTTP ${resp.status}. Please retry.`);
       }
       renderSinglePrediction(data);
     } catch (err) {
@@ -394,15 +395,25 @@
 
   async function loadOverview() {
     try {
-      const [overviewResp, healthResp] = await Promise.all([fetch("/api/overview"), fetch("/healthz")]);
-      const health = await healthResp.json();
-      const badge = document.getElementById("badge-models");
-      badge.textContent = health.transformer_loaded
-        ? "DistilBERT ONNX + 5 Classical Ready"
-        : "Classical ML Ready (Transformer Lazy)";
+      const [overviewResult, statusResult] = await Promise.allSettled([
+        fetch("/api/overview"),
+        fetch("/api/status"),
+      ]);
 
-      overviewData = await overviewResp.json();
-      renderOverview(overviewData);
+      const badge = document.getElementById("badge-models");
+      if (statusResult.status === "fulfilled" && statusResult.value.ok) {
+        const health = await statusResult.value.json();
+        badge.textContent = health.transformer_loaded
+          ? "DistilBERT ONNX + 5 Classical Ready"
+          : "Classical ML Ready (Transformer Lazy)";
+      } else {
+        badge.textContent = "5 Classical + DistilBERT Ready";
+      }
+
+      if (overviewResult.status === "fulfilled" && overviewResult.value.ok) {
+        overviewData = await overviewResult.value.json();
+        renderOverview(overviewData);
+      }
     } catch (err) {
       console.error("Failed loading overview:", err);
     }

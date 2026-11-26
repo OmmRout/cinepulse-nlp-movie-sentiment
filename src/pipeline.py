@@ -60,7 +60,7 @@ def run_full_pipeline(force_refresh_data: bool = False) -> dict:
     print(f"Saved classical bundle to {CLASSICAL_BUNDLE_PATH}")
 
     print("[5/5] Benchmarking Classical Models + DistilBERT Transformer & Error Analysis...")
-    transformer = DistilBertSentimentEngine()
+    transformer = DistilBertSentimentEngine(low_memory=False)
     report = evaluate_all_models(
         test_df=test_df,
         matrices=matrices,

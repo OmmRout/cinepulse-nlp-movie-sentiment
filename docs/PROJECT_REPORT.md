@@ -36,9 +36,9 @@ Streaming platforms, film distributors, and audience analytics teams receive tho
 
 ## 4. Text Representations (`src/representations.py`)
 All vectorizers are fitted strictly on the training split:
-1. **Bag-of-Words (`CountVectorizer`):** Unigrams and bigrams (`ngram_range=(1,2)`, `min_df=3`, capped at 20,000 features).
-2. **Sublinear TF-IDF (`TfidfVectorizer`):** Sublinear term-frequency scaling (`1 + log(tf)`), unigrams & bigrams (`ngram_range=(1,2)`, `min_df=3`, capped at 25,000 features).
-3. **Dense Latent Semantic Embeddings (`TruncatedSVD` + L2 Normalizer):** 128-dimensional dense semantic vectors derived from TF-IDF, projected to 2D via PCA for cluster visualization.
+1. **Bag-of-Words (`CountVectorizer`):** Unigrams and bigrams (`ngram_range=(1,2)`, `min_df=3`, capped at 12,000 features).
+2. **Sublinear TF-IDF (`TfidfVectorizer`):** Sublinear term-frequency scaling (`1 + log(tf)`), unigrams & bigrams (`ngram_range=(1,2)`, `min_df=3`, capped at 15,000 features, `float32`).
+3. **Dense Latent Semantic Embeddings (`TruncatedSVD` + L2 Normalizer):** 64-dimensional `float32` dense semantic vectors derived from TF-IDF, projected to 2D via PCA for cluster visualization.
 4. **Contextual Transformer Subword Embeddings:** 768-dimensional DistilBERT hidden representations via ONNX Runtime.
 
 ---
@@ -49,7 +49,7 @@ All vectorizers are fitted strictly on the training split:
   - TF-IDF + Multinomial Naive Bayes (`alpha=0.4`)
   - TF-IDF + Logistic Regression (`C=2.0`)
   - TF-IDF + Calibrated Linear SVM (`LinearSVC(C=0.8)` + 3-fold sigmoid calibration)
-  - Dense 128-dim SVD Embeddings + Logistic Regression (`C=1.5`)
+  - Dense 64-dim SVD Embeddings + Logistic Regression (`C=1.5`)
 - **Transformer Component (`src/transformer_model.py`):**
   - Quantized **DistilBERT SST-2 (`Xenova/distilbert-base-uncased-finetuned-sst-2-english`)** executed via `onnxruntime` + Rust `tokenizers` for CPU-efficient cloud deployment (head+tail chunking for long reviews during interactive inference).
 
@@ -59,15 +59,15 @@ All vectorizers are fitted strictly on the training split:
 
 | Model | Representation | Accuracy | Precision | Recall | F1-Score | ROC-AUC | Latency (ms/rev) |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| **BoW + Multinomial NB** | Bag-of-Words (1–2g) | 87.65% | 89.67% | 85.08% | 0.8731 | 0.9387 | 0.002 |
-| **TF-IDF + Multinomial NB** | Sublinear TF-IDF (1–2g) | 88.88% | 91.06% | 86.19% | 0.8856 | 0.9527 | 0.001 |
-| **TF-IDF + Logistic Regression** | Sublinear TF-IDF (1–2g) | 89.43% | 90.23% | 88.42% | 0.8931 | 0.9592 | 0.001 |
-| **TF-IDF + Linear SVM** | Sublinear TF-IDF (1–2g) | **89.99%** | **91.84%** | 87.75% | **0.8975** | **0.9623** | 0.004 |
-| **Dense SVD + LogReg** | LSA Dense (128-dim) | 87.88% | 91.26% | 83.74% | 0.8734 | 0.9477 | <0.001 |
-| **DistilBERT (SST-2 ONNX)** | Contextual Subword (768d) | 87.76% | 89.33% | 85.75% | 0.8750 | 0.9472 | 157.31 |
+| **BoW + Multinomial NB** | Bag-of-Words (1–2g) | 87.54% | 88.91% | 85.75% | 0.8730 | 0.9369 | 0.002 |
+| **TF-IDF + Multinomial NB** | Sublinear TF-IDF (1–2g) | 88.54% | 91.00% | 85.52% | 0.8817 | 0.9520 | 0.001 |
+| **TF-IDF + Logistic Regression** | Sublinear TF-IDF (1–2g) | 89.99% | 90.70% | 89.09% | 0.8989 | 0.9591 | 0.001 |
+| **TF-IDF + Linear SVM** | Sublinear TF-IDF (1–2g) | **90.21%** | **91.49%** | 88.64% | **0.9005** | **0.9611** | 0.003 |
+| **Dense SVD + LogReg** | LSA Dense (64-dim) | 87.43% | 89.81% | 84.41% | 0.8703 | 0.9474 | <0.001 |
+| **DistilBERT (SST-2 ONNX)** | Contextual Subword (768d) | 87.76% | 89.33% | 85.75% | 0.8750 | 0.9472 | 115.53 |
 
 ### Key Empirical Finding (Supporting Claims with Data)
-On full-length IMDb reviews (mean 232.6 words), **in-domain `TF-IDF + Linear SVM` (89.99% accuracy, 0.9623 ROC-AUC)** outperformed zero-shot `DistilBERT SST-2` (87.76% accuracy, 0.9472 ROC-AUC) while executing ~39,000x faster on CPU. Two factors explain this result:
+On full-length IMDb reviews (mean 232.6 words), **in-domain `TF-IDF + Linear SVM` (90.21% accuracy, 0.9611 ROC-AUC)** outperformed zero-shot `DistilBERT SST-2` (87.76% accuracy, 0.9472 ROC-AUC) while executing >35,000x faster on CPU. Two factors explain this result:
 1. **Domain & Length Shift:** SST-2 DistilBERT is fine-tuned on short single-sentence Rotten Tomatoes snippets, whereas IMDb reviews frequently open with neutral plot recaps before stating the verdict in closing paragraphs (truncated at 256 subword tokens in batch mode).
 2. **In-Domain Lexical Discrimination:** Bigram TF-IDF directly captures IMDb-specific idioms (`"one best"` +2.60, `"worst"` -4.56, `"waste"` -3.37).
 However, qualitative error inspection shows DistilBERT resolves several subtle concessive and negation-shift errors where linear n-grams fail, motivating our weighted **CinePulse Ensemble** (`0.60 * DistilBERT + 0.25 * LogReg + 0.15 * SVM`) with head+tail chunking for interactive single-review analysis.
@@ -77,11 +77,11 @@ Visual evidence is exported to `artifacts/plots/model_comparison.png`, `artifact
 ---
 
 ## 7. Error Analysis (`artifacts/error_analysis.json`)
-Across 899 test reviews, `TF-IDF + Logistic Regression` produced `95` misclassifications (`43` False Positives, `52` False Negatives), while `DistilBERT SST-2` produced `110` errors (`46` FP, `64` FN). Diagnostic breakdown of LogReg errors:
-- **Sarcasm / Irony & Figurative Framing:** 44 cases (e.g., exaggerated praise used ironically in 1-star reviews).
-- **Mixed / Concessive Review Structure:** 36 cases (reviews praising acting/visuals while condemning plot via `"but"` / `"however"`).
+Across 899 test reviews, `TF-IDF + Logistic Regression` produced `90` misclassifications, while `DistilBERT SST-2` produced `110` errors. Diagnostic breakdown of LogReg errors:
+- **Sarcasm / Irony & Figurative Framing:** 43 cases (e.g., exaggerated praise used ironically in 1-star reviews).
+- **Mixed / Concessive Review Structure:** 32 cases (reviews praising acting/visuals while condemning plot via `"but"` / `"however"`).
 - **Complex Negation Scope:** 12 cases (multi-clause negation diluting positive adjectives).
-- **Subtle / Implicit Critique & Genre Vocabulary:** 3 cases (e.g., polite factual disappointment like *"this picture was far from great"* — where DistilBERT correctly predicted Negative at 33.0% positivity while LogReg predicted 92.8% Positive).
+- **Subtle / Implicit Critique & Genre Vocabulary:** 3 cases (e.g., polite factual disappointment like *"this picture was far from great"* — where DistilBERT correctly predicted Negative at 33.0% positivity while LogReg predicted 94.0% Positive).
 
 ---
 

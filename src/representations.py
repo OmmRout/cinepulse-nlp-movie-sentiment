@@ -31,14 +31,15 @@ def build_representations(
         ngram_range=(1, 2),
         min_df=3,
         max_df=0.90,
-        max_features=20000,
+        max_features=12000,
     )
     tfidf_vectorizer = TfidfVectorizer(
         ngram_range=(1, 2),
         min_df=3,
         max_df=0.90,
-        max_features=25000,
+        max_features=15000,
         sublinear_tf=True,
+        dtype=np.float32,
     )
 
     X_train_bow = bow_vectorizer.fit_transform(train_texts)
@@ -49,14 +50,15 @@ def build_representations(
     X_val_tfidf = tfidf_vectorizer.transform(val_texts)
     X_test_tfidf = tfidf_vectorizer.transform(test_texts)
 
-    # Dense Latent Semantic Embedding representation (128-dim normalized vectors)
-    n_components = min(128, X_train_tfidf.shape[1] - 1, X_train_tfidf.shape[0] - 1)
+    # Dense Latent Semantic Embedding representation (64-dim float32 normalized vectors)
+    n_components = min(64, X_train_tfidf.shape[1] - 1, X_train_tfidf.shape[0] - 1)
     svd_embedder = TruncatedSVD(n_components=n_components, random_state=42)
     embed_normalizer = Normalizer(copy=False)
 
-    X_train_dense = embed_normalizer.fit_transform(svd_embedder.fit_transform(X_train_tfidf))
-    X_val_dense = embed_normalizer.transform(svd_embedder.transform(X_val_tfidf))
-    X_test_dense = embed_normalizer.transform(svd_embedder.transform(X_test_tfidf))
+    X_train_dense = embed_normalizer.fit_transform(svd_embedder.fit_transform(X_train_tfidf)).astype(np.float32)
+    X_val_dense = embed_normalizer.transform(svd_embedder.transform(X_val_tfidf)).astype(np.float32)
+    X_test_dense = embed_normalizer.transform(svd_embedder.transform(X_test_tfidf)).astype(np.float32)
+    svd_embedder.components_ = svd_embedder.components_.astype(np.float32)
 
     # 2D PCA projection of dense embeddings for interactive dashboard visualization
     pca_2d = PCA(n_components=2, random_state=42)

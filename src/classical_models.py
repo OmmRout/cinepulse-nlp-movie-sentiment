@@ -73,7 +73,7 @@ def train_classical_models(
         {
             "key": "svd_logreg",
             "name": "Dense SVD Embeddings + LogReg",
-            "representation": "LSA Dense Embedding (128-dim)",
+            "representation": "LSA Dense Embedding (64-dim)",
             "estimator": LogisticRegression(
                 C=1.5,
                 max_iter=1000,
